@@ -15,14 +15,14 @@ button.onclick = () => {
 
     input.value = '';
 }
-let player;
+let myPlayer;
 
 socket.on('join', msg => {
     let info = JSON.parse(msg);
     console.log(info)
-    player = info.player;
+    myPlayer = info.player;
     game = info.game;
-    players = game.players.sort((a, b) => a.score - b.score);
+    players = game.players.sort((a, b) => b.score - a.score);
 
     //Display name
     // document.getElementById('name').textContent = player.name
@@ -30,6 +30,34 @@ socket.on('join', msg => {
     players.forEach((player, i) => {
         let element = document.createElement('li');
         element.textContent = (i+1) + '. ' + player.name + ' - ' + player.score;
+        if (player.name == myPlayer.name) {
+            element.classList.add('selected')
+        }
         scoreBoard.appendChild(element);
     });
 });
+let guess = letter => {
+    console.log('guessed ' +letter)
+    socket.emit('guess', JSON.stringify({
+        guess: letter,
+        player: myPlayer,
+    }))
+}
+//add keyboard
+let keyboard = document.getElementById('keyboard')
+let rows = [7, 7, 6, 6]
+let i = 0;
+for(let row in rows) {
+    let rowElement = document.createElement('div')
+    for(let j = 0; j < rows[row]; j++) {
+        let button = document.createElement('button')
+        let letter = String.fromCharCode(65 + i)
+
+        button.textContent = letter;
+        button.onclick = () => guess(letter)
+        rowElement.appendChild(button)
+        i++;
+
+    }
+    keyboard.appendChild(rowElement)
+}

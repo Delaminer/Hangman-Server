@@ -66,23 +66,31 @@ const getOpenGame = () => {
 const addPlayer = socket => {
     let name = getName();
     let game = getOpenGame();
-    let player = new Player(name, game);
+    let player = new Player(socket.id, name, game);
     game.addPlayer(player);
     socket.emit('join', JSON.stringify({
         status: 'hi', 
         player: player.getData(),
         game: game.getData(),
     }));
+    return [player, game];
 };
 
 io.on('connection', socket => {
     console.log('Connected: ' + socket.id);
-    addPlayer(socket);
+    [player, game] = addPlayer(socket);
 
     socket.on('disconnect', () => {
         console.log('Disconnected!');
+        game.removePlayer(socket.id, player);
     });
     socket.on('message', msg => {
         console.log('Message: '+msg)
+    });
+    socket.on('guess', msg => {
+
+        let info = JSON.parse(msg);
+        let guess = info.guess;
+        game.guess()
     });
 });
