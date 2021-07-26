@@ -13,7 +13,13 @@
         <link rel="stylesheet" href="">
         <style>
             .selected {
-                background-color: yellow;
+                background-color: yellow !important;
+            }
+            .correct {
+                background-color: green;
+            }
+            .incorrect {
+                background-color: red;
             }
         </style>
     </head>
@@ -27,8 +33,11 @@
                 <ul id="rank">
                     
                 </ul>
+                <p id="time"></p>
             </div>
             <div class="game">
+                <p id='lives'></p>
+                <p id='hints'></p>
                 <div id='keyboard'>
 
                 </div>
