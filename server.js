@@ -35,13 +35,13 @@ const { Server } = require('socket.io');
 const io = new Server(server);
 
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
+    res.sendFile(__dirname + '/index.html');
 });
 app.get('/js', (req, res) => {
     res.sendFile(__dirname + '/test.js');
-  });
+});
 
-let port = 80;
+let port = 5000;
 server.listen(port, () => {
   console.log('listening on *:' + port);
 });
@@ -99,9 +99,4 @@ io.on('connection', socket => {
     socket.on('message', msg => {
         console.log('Message: '+msg)
     });
-    // socket.on('guess', msg => {
-    //     let info = JSON.parse(msg);
-    //     let guess = info.guess;
-    //     game.guess()
-    // });
 });
