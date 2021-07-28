@@ -1,5 +1,5 @@
-let socket = io();
-        
+let socket = io.connect('https://Hangman-Server.delaminer.repl.co');
+
 let myPlayer, game, hints;
 game = {};
 

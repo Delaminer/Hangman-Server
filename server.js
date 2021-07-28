@@ -33,6 +33,12 @@ const server = http.createServer(app);
 //Socket.io stuff
 const { Server } = require('socket.io');
 const io = new Server(server);
+//Allow CORS to allow offsite pages access
+const ioSocket = io.listen(server, {
+    cors: {
+      origin: '*',
+    }
+});
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
@@ -88,7 +94,7 @@ const addPlayer = socket => {
 };
 
 //Main server connection method. Handles new players when they connect.
-io.on('connection', socket => {
+ioSocket.on('connection', socket => {
     console.log('Connected: ' + socket.id);
     [player, game] = addPlayer(socket);
 
