@@ -47,14 +47,17 @@ app.get('/js', (req, res) => {
     res.sendFile(__dirname + '/test.js');
 });
 
-let port = 5000;
+let port = 80;
 server.listen(port, () => {
   console.log('listening on *:' + port);
 });
 
 
 let games = [];
-const newGame = () => new Game(2, 10, getWord, io);
+const newGame = () => {
+  let game = new Game(2, 10, getWord, io)
+  return game;
+};
 
 /**
  * Gets an open game (there is space for more people). If there are none, it creates a new game.
@@ -68,6 +71,16 @@ const getOpenGame = () => {
         //Start a new game
         let game = newGame();
         games.push(game);
+        //Give the game a function that allows itself to be deleted
+        game.delete = () => {
+            //Stop this game loop
+            game.stopTimer();
+            //Remove this game from the list of games            
+            let index = games.indexOf(game);
+            if (index > -1) {
+              games.splice(index, 1);
+            }
+        };
         return game;
     }
     else {
@@ -101,5 +114,9 @@ ioSocket.on('connection', socket => {
     socket.on('disconnect', () => {
         console.log('Disconnected!');
         game.removePlayer(socket.id, player);
+        if (Object.keys(game.players).length < 1) {
+            //Delete the game
+            game.delete();
+        }
     });
 });

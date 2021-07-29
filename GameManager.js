@@ -111,18 +111,31 @@ class Game {
                 this.timeLeft = this.timePerRound;
 
                 if (this.round > this.roundsPerGame) {
-                    //End the game after 5 rounds
-                    this.round = 1; //IDK
+                    //Stop the game timer
+                    this.stopTimer();
                     
-                    //Reset players
-                    for(let p in this.players) {
-                        this.players[p].reset(true);
-                    }
-                    //Then notify. This is seperated in two loops so that the message contains all updated values from the reset
+                    // //Reset players
+                    // for(let p in this.players) {
+                    //     this.players[p].reset(false);
+                    // }
+                    //Notify players the game ended. They can still look at the old scoreboard
                     for(let p in this.players) {
                         //Send message
-                        this.players[p].sendMessage('start', JSON.stringify(this.getData(true, this.players[p])));
+                        this.players[p].sendMessage('gameEnd', JSON.stringify(this.getData(true, this.players[p])));
                     }
+
+                    //End the game, giving a short period before a new one starts
+                    let endTimer = setInterval(() => {
+                        //10 seconds have passed, so tell players to leave and delete this game
+
+                        for(let p in this.players) {
+                            //Send blank message to tell players the game is closing, so they can join a new one
+                            this.players[p].sendMessage('gameClose', '{}');
+                        }
+                        if (this.delete != undefined) {
+                          this.delete();
+                        }
+                    }, 10000);
                 }
                 else {
                     //Next round. Resest guesses and lives, but not score
@@ -149,6 +162,13 @@ class Game {
             
 
         }, 1000);
+    }
+
+    stopTimer() {
+        if (this.timer != undefined) {
+            clearInterval(this.timer);
+            this.timer = undefined;
+        }
     }
 
     /**
