@@ -146,7 +146,7 @@ socket.on('scoreUpdate', msg => {
     let info = JSON.parse(msg);
     console.log('score update')
     console.log(info)
-    useGameData(info.game, 'scoreUpdate');
+    useGameData(info, 'scoreUpdate');
 });
 let setHints = hint => {
     //split then join is used to add spaces in between each letter

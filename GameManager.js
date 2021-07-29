@@ -6,6 +6,7 @@ class Game {
         this.players = {};
         this.getWord = getWord;
 
+        this.roundsPerGame = 5;
         this.round = 0;
         this.timePerRound = 30;
         this.timeLeft = this.timePerRound;
@@ -22,11 +23,7 @@ class Game {
         if (!this.isFull()) {
             this.players[player.id] = player;
             this.playerCount++;
-            player.sendMessage('join', JSON.stringify({
-                status: 'join', 
-                player: player.getData(false),
-                game: this.getData(),
-            }));
+            player.sendMessage('join', JSON.stringify(this.getData(true, player)));
 
             //Connect this player's guess to the game's
             player.socket.on('guess', msg => {
@@ -41,7 +38,7 @@ class Game {
                 //Skip the new player
                 if (otherPlayer ===  player.id) continue;
 
-                this.players[otherPlayer].sendMessage('addPlayer', JSON.stringify(this.getData()));
+                this.players[otherPlayer].sendMessage('addPlayer', JSON.stringify(this.getData(false)));
             }
 
             if (this.round == 0 && this.playerCount >= this.minPlayers) {
@@ -50,7 +47,7 @@ class Game {
                 this.round = 1;
                 //Get a new word
                 this.word = this.getWord();
-                console.log('new round, word is '+this.word)
+                console.log('new game, word is '+this.word)
                 //Reset timing
                 this.timeLeft = this.timePerRound;
                 //Start timer
@@ -63,24 +60,38 @@ class Game {
                 //Then notify. This is seperated in two loops so that the message contains all updated values from the reset
                 for(let p in this.players) {
                     //Send message
-                    this.players[p].sendMessage('start', JSON.stringify(this.getData()))
+                    this.players[p].sendMessage('start', JSON.stringify(this.getData(true, this.players[p])));
                 }
             }
         }
     }
 
-    getData() {
-        return {
-            round: this.round,
-            timeLeft: this.timeLeft,
-            //Return players as an array for ease of access
-            players: Object.keys(this.players).map(playerKey => this.players[playerKey].getData(true)),
-            // players: this.players.map(player => player.getData()),
+    getData(personal, player) {
+        if (personal) {
+            let customHint = 'Please wait';
+            if (this.word != undefined)
+                customHint = this.word.split('').map(letter => player.correct.includes(letter) ? letter : '_').join('');
 
-            minPlayers: this.minPlayers,
-            maxPlayers: this.maxPlayers,
-            //Return the hints a player gets if they have not guessed anything yet
-            hints: this.getHints([]),
+            return {
+                player: player.getData(false),
+                customHint: customHint,
+                game: this.getData(false),
+            }
+        }
+        else {
+            return {
+                round: this.round,
+                roundsPerGame: this.roundsPerGame,
+                timeLeft: this.timeLeft,
+                //Return players as an array for ease of access
+                players: Object.keys(this.players).map(playerKey => this.players[playerKey].getData(true)),
+                // players: this.players.map(player => player.getData()),
+    
+                minPlayers: this.minPlayers,
+                maxPlayers: this.maxPlayers,
+                //Return the hints a player gets if they have not guessed anything yet
+                hints: this.getHints(['-']),
+            }
         }
     }
 
@@ -95,10 +106,11 @@ class Game {
                 this.round++;
                 //New word
                 this.word = this.getWord();
+                console.log('new round, word is '+this.word)
                 //Reset time
                 this.timeLeft = this.timePerRound;
 
-                if (this.round > 5) {
+                if (this.round > this.roundsPerGame) {
                     //End the game after 5 rounds
                     this.round = 1; //IDK
                     
@@ -109,7 +121,7 @@ class Game {
                     //Then notify. This is seperated in two loops so that the message contains all updated values from the reset
                     for(let p in this.players) {
                         //Send message
-                        this.players[p].sendMessage('start', JSON.stringify(this.getData()))
+                        this.players[p].sendMessage('start', JSON.stringify(this.getData(true, this.players[p])));
                     }
                 }
                 else {
@@ -123,7 +135,7 @@ class Game {
                     //Then notify. This is seperated in two loops so that the message contains all updated values from the reset
                     for(let p in this.players) {
                         //Send message
-                        this.players[p].sendMessage('newRound', JSON.stringify(this.getData()))
+                        this.players[p].sendMessage('newRound', JSON.stringify(this.getData(true, this.players[p])));
                     }
                 }
             }
@@ -131,9 +143,7 @@ class Game {
                 //Show the updated time to the players
     
                 for(let p in this.players) {
-                    this.players[p].sendMessage('timeUpdate', JSON.stringify(
-                        this.getData()
-                    ))
+                    this.players[p].sendMessage('timeUpdate', JSON.stringify(this.getData(false)));
                 }
             }
             
@@ -177,24 +187,12 @@ class Game {
             }
         }
 
-        //Generate a custom hint using the player's guesses
-        let customHint = this.word.split('').map(letter => player.correct.includes(letter) ? letter : '_').join('');
-
         //Send back data reflecting the new guess
-        player.sendMessage('guessResult', JSON.stringify({
-            status: 'guessResult',
-            player: player.getData(false),
-            customHint: customHint,
-            game: this.getData(),
-        }));
+        player.sendMessage('guessResult', JSON.stringify(this.getData(true, player)));
 
         //And update scores for all players
         for(let p in this.players) {
-            this.players[p].sendMessage('scoreUpdate', JSON.stringify({
-                status: 'scoreUpdate',
-                // player: player.getData(false),
-                game: this.getData(),
-            }));
+            this.players[p].sendMessage('scoreUpdate', JSON.stringify(this.getData(false)));
         }
     }
 
@@ -210,11 +208,11 @@ class Game {
             rank = Object.keys(this.players).filter(playerID => this.players[playerID].status == 1).length;
         }
 
-        //1st gets 1000, 2nd gets 800, then 600, and so on
-        let rankBonus = 1200 - (200 * rank);
+        //1st gets 100, 2nd gets 80, then 60, and so on
+        let rankBonus = 120 - (20 * rank);
 
         //You get 200 points for each life left
-        let livesBonus = 200 * livesLeft;
+        let livesBonus = 20 * livesLeft;
 
         return rankBonus + livesBonus;
     }
@@ -245,7 +243,7 @@ class Player {
         this.score = 0;
         this.socket = socket;
         // this.score = Math.floor(Math.random() * 100);
-        this.correct = [];
+        this.correct = ['-'];
         this.incorrect = [];
         this.status = 0; //0: still guessing, 1: won, 2: lost
         this.game = game;
@@ -285,7 +283,7 @@ class Player {
         //Reset lives
         this.lives = this.startingLives;
         //Reset guesses
-        this.correct = [];
+        this.correct = ['-'];
         this.incorrect = [];
         //Reset status
         this.status = 0;

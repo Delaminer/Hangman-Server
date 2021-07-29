@@ -102,7 +102,4 @@ ioSocket.on('connection', socket => {
         console.log('Disconnected!');
         game.removePlayer(socket.id, player);
     });
-    socket.on('message', msg => {
-        console.log('Message: '+msg)
-    });
 });
