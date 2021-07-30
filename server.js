@@ -18,8 +18,8 @@ const adjectives = getList('adjectives.txt');
 const words = [...animals, ...nouns, ...adjectives];
 const getWord = () => words[Math.floor(Math.random() * words.length)].toUpperCase();
 //An adjective and an animal (both capitalized)
-const getName = () => 
-    capitalize(adjectives[Math.floor(Math.random() * adjectives.length)]) + ' ' + 
+const getName = () =>
+    capitalize(adjectives[Math.floor(Math.random() * adjectives.length)]) + ' ' +
     capitalize(animals[Math.floor(Math.random() * animals.length)]);
 
 const { Game, Player } = require('./GameManager')
@@ -27,6 +27,8 @@ const { Game, Player } = require('./GameManager')
 //Http server stuff
 const express = require('express');
 const app = express();
+const cors = require('cors');
+app.use(cors());
 const http = require('http');
 const server = http.createServer(app);
 
@@ -36,27 +38,46 @@ const io = new Server(server);
 //Allow CORS to allow offsite pages access
 const ioSocket = io.listen(server, {
     cors: {
-      origin: '*',
+        origin: '*',
     }
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
-});
-app.get('/js', (req, res) => {
-    res.sendFile(__dirname + '/test.js');
-});
+// app.get('/', (req, res) => {
+//     res.sendFile(__dirname + '/index.html');
+// });
+// app.get('/js', (req, res) => {
+//     res.sendFile(__dirname + '/test.js');
+// });
 
 let port = 80;
 server.listen(port, () => {
-  console.log('listening on *:' + port);
+    console.log('listening on *:' + port);
 });
 
 
 let games = [];
 const newGame = () => {
-  let game = new Game(2, 10, getWord, io)
-  return game;
+    let game = new Game(2, 10, getWord, ioSocket);
+    //Get a unique room ID for this game
+    let id = 'Game' + Math.floor(Math.random() * 10000);
+    while(games.map(game => game.id).includes(id)) {
+        id = 'Game' + Math.floor(Math.random() * 10000);
+    }
+    game.id = id;
+    //For giving the players a new home after this game ends
+    game.findGame = getOpenGame; 
+    //Give the game a function that allows itself to be deleted
+    game.delete = () => {
+        console.log('Stopping game '+game.id)
+        //Stop this game loop
+        game.stopTimer();
+        //Remove this game from the list of games            
+        let index = games.indexOf(game);
+        if (index > -1) {
+            games.splice(index, 1);
+        }
+    };
+    return game;
 };
 
 /**
@@ -64,23 +85,15 @@ const newGame = () => {
  * @returns {Game} A game that can take a new player.
  */
 const getOpenGame = () => {
-    //Get a list of games that have room
-    let availableGames = games.filter(game => !game.isFull());
+    //Get a list of games that are available (they are not full and they are not over)
+    let available = game => !game.isFull() && game.round <= game.roundsPerGame;
+    let availableGames = games.filter(available);
 
     if (availableGames == 0) {
         //Start a new game
         let game = newGame();
+        //Add the new game to the list of games
         games.push(game);
-        //Give the game a function that allows itself to be deleted
-        game.delete = () => {
-            //Stop this game loop
-            game.stopTimer();
-            //Remove this game from the list of games            
-            let index = games.indexOf(game);
-            if (index > -1) {
-              games.splice(index, 1);
-            }
-        };
         return game;
     }
     else {
@@ -102,7 +115,7 @@ const addPlayer = socket => {
     let player = new Player(name, game, socket);
     //Add the player to the available game
     game.addPlayer(player);
-    
+
     return [player, game];
 };
 
@@ -111,12 +124,12 @@ ioSocket.on('connection', socket => {
     console.log('Connected: ' + socket.id);
     [player, game] = addPlayer(socket);
 
-    socket.on('disconnect', () => {
-        console.log('Disconnected!');
-        game.removePlayer(socket.id, player);
-        if (Object.keys(game.players).length < 1) {
-            //Delete the game
-            game.delete();
-        }
-    });
+    //get number of players and games
+    // let gameCount = games.length;
+    // let playerCount = 0;
+    // for (let g in games) {
+    //     playerCount += Object.keys(games[g].players).length;
+    // }
+    // console.log(`there are now ${playerCount} players in ${gameCount} games.`);
+
 });

@@ -1,5 +1,6 @@
 class Game {
-    constructor(minPlayers, maxPlayers, getWord) {
+    constructor(minPlayers, maxPlayers, getWord, io) {
+        this.io = io;
         this.minPlayers = minPlayers;
         this.maxPlayers = maxPlayers;
         this.playerCount = 0;
@@ -15,14 +16,22 @@ class Game {
         this.timer = undefined;
     }
 
+    log(msg) {
+        //Log is currently disabled.
+        // console.log(`${this.id} (${Object.keys(this.players).length}): ${msg}`);
+    }
+
     isFull() {
         return this.playerCount >= this.maxPlayers;
     }
 
     addPlayer(player) {
         if (!this.isFull()) {
+            player.reset(true);
             this.players[player.id] = player;
             this.playerCount++;
+            //Add the player to this game's room
+            player.socket.join(this.id);
             player.sendMessage('join', JSON.stringify(this.getData(true, player)));
 
             //Connect this player's guess to the game's
@@ -32,14 +41,23 @@ class Game {
                 let guess = info.guess;
                 this.guess(guess, player);
             })
+            //When this player disconnects, remove them from the game and notifiy other players
+            player.socket.on('disconnect', () => {
+                this.log(player.name + ' disconnected!');
+                this.removePlayer(player.socket.id, player);
+                if (Object.keys(this.players).length < 1) {
+                    //Delete the game
+                    this.delete();
+                }
+                else {
+                    //Notify the other players another player left
+                    player.sendExclusiveMessage('removePlayer', JSON.stringify(this.getData(false)), this.id);
+                }
+                player.socket.removeAllListeners();
+            });
 
-            //Let other players know there is a new player
-            for(let otherPlayer in this.players) {
-                //Skip the new player
-                if (otherPlayer ===  player.id) continue;
-
-                this.players[otherPlayer].sendMessage('addPlayer', JSON.stringify(this.getData(false)));
-            }
+            // //Let other players know there is a new player
+            player.sendExclusiveMessage('addPlayer', JSON.stringify(this.getData(false)), this.id);
 
             if (this.round == 0 && this.playerCount >= this.minPlayers) {
                 //Start the game!
@@ -47,7 +65,7 @@ class Game {
                 this.round = 1;
                 //Get a new word
                 this.word = this.getWord();
-                console.log('new game, word is '+this.word)
+                this.log('new game, word is '+this.word)
                 //Reset timing
                 this.timeLeft = this.timePerRound;
                 //Start timer
@@ -80,6 +98,7 @@ class Game {
         }
         else {
             return {
+                id: this.id,
                 round: this.round,
                 roundsPerGame: this.roundsPerGame,
                 timeLeft: this.timeLeft,
@@ -102,50 +121,64 @@ class Game {
             
             //If time goes negative (display 0), end the round
             if (this.timeLeft < 0) {
-                //Start a new round
-                this.round++;
-                //New word
-                this.word = this.getWord();
-                console.log('new round, word is '+this.word)
-                //Reset time
-                this.timeLeft = this.timePerRound;
 
-                if (this.round > this.roundsPerGame) {
+                if (this.round >= this.roundsPerGame) {
+                    //End the game
+
+                    //For a better display
+                    this.timeLeft = 0;
+                    this.round++;
+
                     //Stop the game timer
                     this.stopTimer();
                     
-                    // //Reset players
-                    // for(let p in this.players) {
-                    //     this.players[p].reset(false);
-                    // }
-                    //Notify players the game ended. They can still look at the old scoreboard
+                    //Notify players the game ended. The game does not end right away, so players can still look at the old scoreboard
                     for(let p in this.players) {
                         //Send message
                         this.players[p].sendMessage('gameEnd', JSON.stringify(this.getData(true, this.players[p])));
                     }
+                    
 
-                    //End the game, giving a short period before a new one starts
-                    let endTimer = setInterval(() => {
-                        //10 seconds have passed, so tell players to leave and delete this game
+                    //Wait 10 seconds before putting players into a new game
+                    //Use setTimeout, so the function runs after 10 seconds, and runs only once
+                    setTimeout(() => {
+                        //10 seconds have passed
 
+                        //Put the players from this game into new games (they might not all fit in)
+                        let newGame = this.findGame();
                         for(let p in this.players) {
-                            //Send blank message to tell players the game is closing, so they can join a new one
-                            this.players[p].sendMessage('gameClose', '{}');
+                            //Remove them from this room
+                            this.players[p].socket.leave(this.id);
+                            //Remove the game's listeners to this player
+                            this.players[p].socket.removeAllListeners();
+                            //Add them to the new game
+                            newGame.addPlayer(this.players[p]);
+                            if (newGame.isFull()) {
+                                //Find a new game
+                                newGame = this.findGame();
+                            }
                         }
+
+                        //Delete this game
                         if (this.delete != undefined) {
                           this.delete();
                         }
                     }, 10000);
                 }
                 else {
-                    //Next round. Resest guesses and lives, but not score
-                    
+                    //New round. Reset guesses and lives, but not score
+                    this.round++;
+                    //New word
+                    this.word = this.getWord();
+                    this.log('New round, word is ' + this.word);
+                    //Reset time
+                    this.timeLeft = this.timePerRound;
 
                     //Reset players
                     for(let p in this.players) {
                         this.players[p].reset(false);
                     }
-                    //Then notify. This is seperated in two loops so that the message contains all updated values from the reset
+                    //Notify players of the new round. This is seperated in two loops so that the message contains all updated values from the reset
                     for(let p in this.players) {
                         //Send message
                         this.players[p].sendMessage('newRound', JSON.stringify(this.getData(true, this.players[p])));
@@ -155,9 +188,7 @@ class Game {
             else {
                 //Show the updated time to the players
     
-                for(let p in this.players) {
-                    this.players[p].sendMessage('timeUpdate', JSON.stringify(this.getData(false)));
-                }
+                this.io.to(this.id).emit('timeUpdate', JSON.stringify(this.getData(false)));
             }
             
 
@@ -177,16 +208,16 @@ class Game {
      * @param {Player} player The Player object for the player.
      */
     guess(letter, player) {
-        if (this.round < 1) return;
+        if (this.round < 1 || this.round > this.roundsPerGame) return;
 
         //Must be a new guess and the player must still be in guessing mode
-        if (player.status != 0 || player.correct.includes(letter) || player.incorrect.includes(letter)) return
+        if (player.status != 0 || player.correct.includes(letter) || player.incorrect.includes(letter)) return;
 
         //Check if the word contains the letter
         if (this.word.includes(letter)) {
             //Good!
             player.correct.push(letter);
-            console.log('Correct! letter '+letter)
+            this.log('Correct! letter '+letter)
             
             //Check if the player guessed all of the letters
             if (this.word.split('').filter(letter => !player.correct.includes(letter)).length == 0) {
@@ -194,7 +225,7 @@ class Game {
                 player.status = 1;
                 //Add score relative to the number of lives they have left and how many people got it before them
                 player.score += this.calculateScore(player.lives);
-                console.log(player.name + ' has guessed the word correctly with ' + player.lives + ' left!');
+                this.log(player.name + ' has guessed the word correctly with ' + player.lives + ' left!');
             }
         }
         else {
@@ -211,9 +242,7 @@ class Game {
         player.sendMessage('guessResult', JSON.stringify(this.getData(true, player)));
 
         //And update scores for all players
-        for(let p in this.players) {
-            this.players[p].sendMessage('scoreUpdate', JSON.stringify(this.getData(false)));
-        }
+        this.io.to(this.id).emit('scoreUpdate', JSON.stringify(this.getData(false)));
     }
 
     /**
@@ -294,6 +323,11 @@ class Player {
     sendMessage(name, message) {
         this.socket.emit(name, message);
     }
+
+    sendExclusiveMessage(name, message, room) {
+        this.socket.to(room).emit(name, message);
+    }
+
 
     /**
      * Resets variables for this player. Use for new rounds and new games.
